@@ -36,7 +36,7 @@ def conv3x3(in_channels,
 
 def upconv2x2(in_channels, out_channels, mode='transpose'):
     if mode == 'transpose':
-        return torchm.nn.ConvTranspose2d(
+        return torch.nn.ConvTranspose2d(
             in_channels, out_channels, kernel_size=2, stride=2)
     else:
         # out_channels is always going to be the same
@@ -46,7 +46,7 @@ def upconv2x2(in_channels, out_channels, mode='transpose'):
             conv1x1(in_channels, out_channels))
 
 
-class DownConv(nn.Module):
+class DownConv(torch.nn.Module):
     """
     A helper Module that performs 2 convolutions and 1 MaxPool.
     A ReLU activation follows each convolution.
@@ -75,7 +75,7 @@ class DownConv(nn.Module):
         return x, before_pool
 
 
-class UpConv(nn.Module):
+class UpConv(torch.nn.Module):
     """
     A helper Module that performs 2 convolutions and 1 UpConvolution.
     A ReLU activation follows each convolution.
@@ -129,7 +129,7 @@ class UpConv(nn.Module):
         return x
 
 
-class UNet(nn.Module):
+class UNet(torch.nn.Module):
     """ `UNet` class is based on https://arxiv.org/abs/1505.04597
 
     The U-Net is a convolutional encoder-decoder neural network.

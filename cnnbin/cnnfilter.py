@@ -126,6 +126,53 @@ class CNNbin():
             assert image.shape[
                 2] == 3, 'Colour images should be in format (H,W,C)'
 
+    def train_image(self, image, num_epochs=10, learning_rate=1e-3,
+                    alpha=0.95):
+        '''Train single image
+
+        Args:
+            image (ndarray): Input image
+            num_epochs (int, optional): Defaults to 10. Number of epochs
+            learning_rate (float, optional): Defaults to 1e-3. Learning rate of optimizer
+            alpha (float, optional): Defaults to 0.95. Regularization of filter to compensate for
+            the non-exact loss function(0.5 converges to identity function, 1.0 is full smoothing)
+        '''
+
+        self._assert_image(image)
+
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = learning_rate
+
+        self.res_loss = []
+        self.res_psnr = []
+
+        self.model.train()
+        pbar = tqdm(
+            range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
+
+        if self.multichannel:
+            im1, im2 = split_diagonal_rgb(image)
+        else:
+            im1, im2 = split_diagonal(image)
+
+        im1 = self._image_to_torch(im1)
+        im2 = self._image_to_torch(im2)
+
+        for _ in pbar:
+            self.epoch += 1
+
+            out_cnn1, loss1 = self._sgd_step(im1, im2, alpha)
+            out_cnn2, loss2 = self._sgd_step(im2, im1, alpha)
+
+            psnr_cnn, psnr_input = _model_psnr(image, im1, im2, out_cnn1,
+                                               out_cnn2)
+
+            pbar.set_description('PSNR ({:.3}/{:.3})'.format(
+                psnr_cnn, psnr_input))
+
+            self.res_loss.append((loss1 + loss2))
+            self.res_psnr.append(psnr_cnn)
+
     def train_random(self,
                      image,
                      num_batches=4,
@@ -135,7 +182,7 @@ class CNNbin():
         '''Train single image on randomly sampled patches
 
         Args:
-            image (ndarray): Inout image
+            image (ndarray): Input image
             num_batches (int, optional): Defaults to 4. Total number of minibatches
             num_epochs (int, optional): Defaults to 10. Number of epochs
             learning_rate (float, optional): Defaults to 1e-3. Learning rate of optimizer
@@ -220,7 +267,7 @@ class CNNbin():
         dataset = N2NPatches(
             image, block_shape=self.block_size, sampling=sampling)
         data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size)
+            dataset, batch_size=self.batch_size)
 
         pbar = tqdm(
             range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
