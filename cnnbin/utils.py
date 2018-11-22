@@ -195,8 +195,10 @@ def split_stack_rgb(stack):
     return stack1, stack2
 
 
-def psnr(f, x, psnr_range=None):
+def psnr(reference, image, psnr_range=None):
+    im1 = np.asarray(reference, dtype=np.float64)
+    im2 = np.asarray(image, dtype=np.float64)
     if psnr_range is None:
-        psnr_range = np.max(f) - np.min(f)
-    MSE = np.mean((x - f) * (x - f))
+        psnr_range = np.max(im1) - np.min(im1)
+    MSE = np.mean(np.square(im1 - im2), dtype=np.float64)
     return 20 * np.log10(psnr_range / np.sqrt(MSE))

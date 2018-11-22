@@ -39,9 +39,11 @@ where X1 and X2 are two uncorrelated data samples from the high-resolution image
 
 ### Color images
 
-Below we show the result for 'monarch' in SET14 with artififcial Gaussian  noise (sigma = 30) compared to the mean-binned image. The reference methods (TV, NLM, BM3D) show the corresponding result by minimzing the true loss function using oracle information of the the reference image.
+Below we show the result for 'monarch' in SET14 with artififcial Gaussian  noise (sigma = 50) compared to the mean-binned image.
+<!-- The reference methods (TV, NLM, BM3D) show the corresponding result by minimzing the true loss function using oracle information of the the reference image. -->
 
-![Schematic](images/monarch_example.png)
+<!-- ![Schematic](images/monarch_example.png) -->
+![Schematic](images/monarch_compare.png)
 
 ### Tomography
 
@@ -50,6 +52,25 @@ Example of a SXT reconstruction of a Human B-cell reconstructed with FBP (Ram-La
 |Binned projections | CNN binned projections |
 | ---|---|
 |![FBP noisy](images/fbp_stackm_noisy.png)|![FBP filtered](images/fbp_stackcnn_noisy.png)|
+
+### IC
+
+Example patches of filtered SEM images of an IC board.
+
+![Schematic](images/IC_patches.png)
+
+
+#### Credit where credit is due
+
+
+
+Encoder-decoder neural network implementation adapted from the UNet implementation of [jaxony](https://github.com/jaxony/unet-pytorch).
+
+Summary function for PyTorch modules adapted from [sksq96](https://github.com/sksq96/pytorch-summary/tree/master/torchsummary).
+
+IC images courtesy of Michael Sutherland.
+
+
 
 
 
