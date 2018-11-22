@@ -8,26 +8,29 @@ at
 October 31 - November 2, 2018
 
 ## Intro
-In terms of signal processing, the optimal digital filter to remove the high-frequency portion of the image is the sinc filter. When decimation is doen by an integer factor, area-averaging is usually very close to optimal and produces usually not much aliasing. In this case, downsampling by a factor of 2 can be expressed in the from
+In terms of signal processing, the optimal digital filter to remove the high-frequency portion of the image is the sinc filter. When decimation is done by an integer factor, area-averaging is usually very close to optimal and produces usually not much aliasing. In this case, downsampling by a factor of 2 can be expressed in the from
 
 <!-- 253 -->
 <img src="images/latex_downsample.png" alt="downsampling" height="84" widht="auto"/>
 
-Ideal filters like this are unbiassed and do not take into account any priors that may be suitable for the image. The basic idea of this method is that we can construct separate signals from the data and train a CNN to do the downsampling.
+Ideal filters like this are unbiased and do not take into account any priors that may be suitable for the image. The basic idea of this method is that we can construct separate signals from the data and train a CNN to do the downsampling.
 
-Recent work of Lehtinen et al. show that instead of needing true signal, CNNs can be trained using just noisy images by minimizing some distance (loss function) L.
+Recent work of Lehtinen et al. show that instead of needing true signal, CNN filters can be trained using noisy images as both input and training target by minimizing some distance (loss function) L.
 
 <!-- 150 -->
 <img src="images/latex_n2nfilter.png" alt="n2nfilter" height="50" widht="auto"/>
 
-Based on
+Between the noisy obswervations.
+
 [Noise2Noise: Learning Image Restoration without Clean Data](https://arxiv.org/abs/1803.04189)
-
 ```
-Lehtinen, Jaakko, et al. “Noise2Noise: Learning Image Restoration without Clean Data.” <em>Proceedings of the 35th International Conference on Machine Learning, PMLR 80:2965-2974, 2018</em>.
+Lehtinen, Jaakko, et al. “Noise2Noise: Learning Image Restoration without Clean Data.”
+
+Proceedings of the 35th International Conference on Machine Learning, PMLR 80:2965-2974, 2018.
 ```
 
-Now within the sampling rate of the output image, we can view all pixels corresponding to the same binned pixel as separate observations of the downsampled image. This provides information to optimize some parametrized filter such that we can use the result of Lehtinen et al. to train a CNN sownsampler.
+
+Now within the sampling rate of the output image, we can view all pixels corresponding to the same binned pixel as separate observations of the downsampled image. This provides information to optimize some parametrized filter such that we can use the result of Lehtinen et al. to train a CNN downsampler.
 
 <!-- 102 -->
 <img src="images/latex_n2nbin.png" alt="n2nbin" height="34" widht="auto"/>
@@ -50,7 +53,7 @@ Below we show the result for 'monarch' in SET14 with artififcial Gaussian  noise
 
 ### Tomography
 
-Example of a SXT reconstruction of a Human B-cell reconstructed with FBP (Ram-Lak). In this example, the net was trained simultainiously on all projection images.
+Example of a SXT reconstruction of a Human B-cell reconstructed with FBP (Ram-Lak). In this example, the net was trained simultaneously on all projection images.
 
 |Binned projections | CNN binned projections |
 | ---|---|
