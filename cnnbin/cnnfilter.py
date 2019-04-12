@@ -15,15 +15,16 @@ from .utils import progress_bar, psnr, split_diagonal, split_diagonal_rgb
 
 
 def _model_psnr(im1, im2, out_cnn1, out_cnn2, reference_image=None):
+    im1, im2 = im1.cpu().detach().numpy(), im2.cpu().detach().numpy()
+
     if reference_image is not None:
         psnr_range = np.max(reference_image) - np.min(reference_image)
     else:
         maxval = max([np.max(im1), np.max(im2)])
-        minval = max([np.min(im1), np.max(im2)])
+        minval = max([np.min(im1), np.min(im2)])
         psnr_range = maxval - minval
 
     psnr_cnn = psnr(out_cnn1, out_cnn2, psnr_range)
-    im1, im2 = im1.cpu().detach().numpy(), im2.cpu().detach().numpy()
     psnr_input = psnr(im1, im2, psnr_range)
 
     return psnr_cnn, psnr_input
