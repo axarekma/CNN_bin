@@ -1,14 +1,14 @@
-'''
+"""
 Misc utility functions for CNNbin
-'''
+"""
 from functools import reduce
 from math import ceil
-
+import tqdm
 import numpy as np
 
 
 def window(shape, func, **kwargs):
-    '''[summary]
+    """[summary]
 
     Args:
         shape (Tuple): Shape of image
@@ -16,14 +16,14 @@ def window(shape, func, **kwargs):
 
     Returns:
         [ndarray]: windowing function along all dimesnions of shape
-    '''
+    """
 
     windowfuncs = [func(l, **kwargs) for l in shape]
     return reduce(np.multiply, np.ix_(*windowfuncs))
 
 
-def pad2bin(image, n_div=16, mode='reflect'):
-    '''Pad image to be divisible by n_div
+def pad2bin(image, n_div=16, mode="reflect"):
+    """Pad image to be divisible by n_div
 
     Args:
         image (ndarray): input image
@@ -32,7 +32,7 @@ def pad2bin(image, n_div=16, mode='reflect'):
 
     Returns:
         ndarray: Padded image
-    '''
+    """
 
     shape = image.shape
     newshape = [n_div * ceil(i / n_div) for i in image.shape]
@@ -40,12 +40,11 @@ def pad2bin(image, n_div=16, mode='reflect'):
     if len(newshape) > 2:
         newshape[2] = shape[2]
 
-    return np.pad(image, [(0, n_div - o)
-                          for n_div, o in zip(newshape, shape)], mode)
+    return np.pad(image, [(0, n_div - o) for n_div, o in zip(newshape, shape)], mode)
 
 
 def random_patches(image, block_size, max_patches, random_state=None):
-    '''Generate random pathces drawn from image
+    """Generate random pathces drawn from image
 
     Args:
         image (ndarray): input image
@@ -56,7 +55,7 @@ def random_patches(image, block_size, max_patches, random_state=None):
 
     Returns:
         [ndarray]: array of patches, patches along dim 0.
-    '''
+    """
 
     random_generator = np.random.RandomState(random_state)
     d_0, d_1 = image.shape[0], image.shape[1]
@@ -73,13 +72,16 @@ def random_patches(image, block_size, max_patches, random_state=None):
         retval = np.zeros((max_patches, *block_size))
 
     for i in range(max_patches):
-        retval[i] = image[sample0[i]:sample0[i] +
-                          block_size[0], sample1[i]:sample1[i] + block_size[1]]
+        retval[i] = image[
+            sample0[i] : sample0[i] + block_size[0],
+            sample1[i] : sample1[i] + block_size[1],
+        ]
 
     return retval.astype(image.dtype)
 
 
 def split_stack(stack):
+    """ split stack diagonally"""
     new_shape = [i // 2 for i in stack.shape]
     new_shape[0] = stack.shape[0]
 
@@ -95,8 +97,8 @@ def split_stack(stack):
 
 
 def split_diagonal(image):
-    n0, n1 = image.shape
-    new_shape = (n0 // 2, 2, n1 // 2, 2)
+    """ split image diagonally"""
+    new_shape = (image.shape[0] // 2, 2, image.shape[1] // 2, 2)
     ndarray = image.reshape(new_shape)
     image1 = ndarray[:, 0, :, 0] + ndarray[:, 1, :, 1]
     image2 = ndarray[:, 0, :, 1] + ndarray[:, 1, :, 0]
@@ -104,27 +106,29 @@ def split_diagonal(image):
     return image1 / 2, image2 / 2
 
 
-def crop2bin(image, n=16):
-    newshape = [n * (i // n) for i in image.shape]
-    return image[:newshape[0], :newshape[1]]
+def crop2bin(image, scale=16):
+    """ crop image to largest size scale*[n,m] """
+    newshape = [scale * (i // scale) for i in image.shape]
+    return image[: newshape[0], : newshape[1]]
 
 
 def data_gaussian(image, sigma):
+    """ reference and synthetic data for random gaussian noise """
     image = crop2bin(image)
     noisy = image + sigma * np.random.standard_normal(image.shape)
     noisy = np.clip(noisy, 0, 1e9)
     return image, noisy
 
 
-def bin_ndarray(ndarray, operation='mean'):
+def bin_ndarray(ndarray, operation="mean"):
+    """ bin ndarray by two """
     new_shape = [i // 2 for i in ndarray.shape]
 
     operation = operation.lower()
-    if not operation in ['sum', 'mean']:
+    if operation not in ["sum", "mean"]:
         raise ValueError("Operation not supported.")
     if ndarray.ndim != len(new_shape):
-        raise ValueError("Shape mismatch: {} -> {}".format(
-            ndarray.shape, new_shape))
+        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape, new_shape))
 
     compression_pairs = [(d, c // d) for d, c in zip(new_shape, ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]
@@ -136,8 +140,9 @@ def bin_ndarray(ndarray, operation='mean'):
 
 
 def split_bins(image):
-    n0, n1 = image.shape
-    new_shape = (n0 // 2, 2, n1 // 2, 2)
+    """ split image into the four downsampled  images """
+
+    new_shape = (image.shape[0] // 2, 2, image.shape[1] // 2, 2)
     ndarray = image.reshape(new_shape)
     im1 = ndarray[:, 0, :, 0]
     im2 = ndarray[:, 0, :, 1]
@@ -146,7 +151,8 @@ def split_bins(image):
     return im1, im2, im3, im4
 
 
-def split_rgb(image, mode='diag'):
+def split_rgb(image, mode="diag"):
+    """ split rgbimage into the four downsampled  images """
     new_shape = [i // 2 for i in image.shape]
     retval1 = np.zeros((new_shape[0], new_shape[1], 3))
     retval2 = np.zeros((new_shape[0], new_shape[1], 3))
@@ -158,13 +164,14 @@ def split_rgb(image, mode='diag'):
         retval2[:, :, i] = im2
         retval3[:, :, i] = im3
         retval4[:, :, i] = im4
-    if mode == 'all':
+    if mode == "all":
         return retval1, retval2, retval3, retval4
-    if mode == 'diag':
+    if mode == "diag":
         return retval1 + retval3, retval2 + retval4
 
 
 def split_diagonal_rgb(image):
+    """ split rgbimage into the two diagonally averaged downsampled images """
     new_shape = [i // 2 for i in image.shape]
     retval1 = np.zeros((new_shape[0], new_shape[1], 3))
     retval2 = np.zeros((new_shape[0], new_shape[1], 3))
@@ -180,6 +187,7 @@ def split_diagonal_rgb(image):
 
 
 def split_stack_rgb(stack):
+    """ split stack of rgbimages into the two diagonally averaged downsampled images """
     new_shape = [i // 2 for i in stack.shape]
     new_shape[0] = stack.shape[0]
     new_shape[3] = stack.shape[3]
@@ -196,9 +204,43 @@ def split_stack_rgb(stack):
 
 
 def psnr(reference, image, psnr_range=None):
+    """ calculate PSNR """
     im1 = np.asarray(reference, dtype=np.float64)
     im2 = np.asarray(image, dtype=np.float64)
     if psnr_range is None:
         psnr_range = np.max(im1) - np.min(im1)
-    MSE = np.mean(np.square(im1 - im2), dtype=np.float64)
-    return 20 * np.log10(psnr_range / np.sqrt(MSE))
+    mean_squared_error = np.mean(np.square(im1 - im2), dtype=np.float64)
+    return 20 * np.log10(psnr_range / np.sqrt(mean_squared_error))
+
+
+def clipto8bit(image):
+    """ clip float image to 8 bit range"""
+    return np.clip(image, 0, 255).astype("uint8")
+
+
+def isnotebook():
+    """ helper to see if underlying kernel is a notebook """
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == "ZMQInteractiveShell":
+            return True  # Jupyter notebook or qtconsole
+        elif shell == "TerminalInteractiveShell":
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False  # Probably standard Python interpreter
+
+
+def rangebar(n):
+    """ wrapper for tnrange to choose between console and notebook"""
+    rangefunc = tqdm.tnrange if isnotebook() else tqdm.trange
+    return rangefunc(n)
+
+
+def progress_bar(rangearg, desc):
+    """ wrapper for tqdm to choose between console and notebook"""
+    if isnotebook():
+        return tqdm.tqdm_notebook(range(rangearg), desc=desc)
+    return tqdm.tqdm(range(rangearg), ncols=60, desc=desc)
+

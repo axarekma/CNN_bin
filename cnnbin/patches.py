@@ -1,123 +1,131 @@
-import numpy as np
+"""
+Handling of dividing and combining image pathces
+"""
+import functools
+import operator
 from math import ceil
+
+import numpy as np
+
 from .utils import window
 
 
+def divide(length, block_size, n_blocks, ind_div=1):
+    """ Divide a 1d array into evenly spaced
+        blocks of size block_size.
+
+    Arguments:
+        length {[type]} -- Length of the space
+        block_size {[type]} -- Size of the blocks
+        n_blocks {[type]} -- Number of blocks
+        ind_div {[int]} -- Make indecies divisable by argument
+
+    Returns:
+        [type] -- Starting index of the blocks
+    """
+
+    x0, xend = 0, length - block_size
+    return np.round(np.linspace(x0, xend, n_blocks) / ind_div).astype(int) * ind_div
+
+
+def num_blocks(lenght, size, sampling=1.0):
+    """Number of blocks needed to cover the lenght
+
+    Arguments:
+        lenght {int} -- Length of the array
+        size {int} -- blocks size
+        sampling {float} -- sampling of the length
+            1.0 gives the minimum required blocks to cover the array (default: {1.0})
+        ind_div {[int]} -- Make indecies divisable by argument
+    """
+    return int(ceil(sampling * lenght / size))
+
+
 def split(image, block_size, sampling=1.0, ind_div=1):
-    n_div = [
-        int(ceil(sampling * d / b)) for d, b in zip(image.shape, block_size)
-    ]
+    """Split the volume into subvolumes of size block_shape
+
+    Arguments:
+        image {ndarray} -- 2d image
+        block_size {tuple} -- shape of the blocks
+        sampling {float} -- sampling of the length
+            1.0 gives the minimum required blocks to cover the array (default: {1.0})
+        ind_div {[int]} -- Make indecies divisable by argument
+
+    Keyword Arguments:
+        sampling {float} -- (over)Sampling of the data.
+        1.0 produces the minimum number of blocks to cover the whole volume(default: {1.0})
+    Returns:
+        [list] -- List of subvolume Slice views of the original data
+    """
+    assert len(block_size) == 2, "block_size must have a length of 2"
 
     limits = [
-        divide(l, bs, n, ind_div=ind_div)
-        for l, bs, n in zip(image.shape, block_size, n_div)
+        divide(length, size, num_blocks(length, size, sampling), ind_div=ind_div)
+        for length, size in zip(image.shape, block_size)
     ]
 
     image_blocks = []
-    for i in range(n_div[0]):
-        for j in range(n_div[1]):
-            image_blocks.append(image[limits[0][0][i]:limits[0][1][i], limits[
-                1][0][j]:limits[1][1][j]])
+    for lim0 in limits[0]:
+        slice0 = slice(lim0, lim0 + block_size[0])
+        for lim1 in limits[1]:
+            slice1 = slice(lim1, lim1 + block_size[1])
+            image_blocks.append(image[slice0, slice1])
 
     return np.array(image_blocks)
 
 
-def combine(blocklist, block_size, shape, sampling=1.0, windowfunc=None):
-    n_div = [int(ceil(sampling * d / b)) for d, b in zip(shape, block_size)]
+def combine(blocklist, shape, sampling=1.0, windowfunc=None):
+    """Combine patches into one image
 
-    limits = [divide(l, bs, n) for l, bs, n in zip(shape, block_size, n_div)]
+    Arguments:
+        blocklist {list} -- list of subimges
+        shape {tuple} -- Original shape of image
 
-    image = np.zeros(shape)
-    image_n = np.zeros(shape)
+    Keyword Arguments:
+        sampling {float} -- Sampling used to produce blocks (default: {1.0})
+        windowfunc {function} -- If defined, applies a windowing on the data for smoother
+                                 blending (default: {None})
 
-    if windowfunc is None:
-        index = 0
-        for i in range(n_div[0]):
-            for j in range(n_div[1]):
-                image[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:limits[
-                    1][1][j]] += blocklist[index]
-                image_n[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:
-                        limits[1][1][j]] += 1
-                index += 1
-    else:
-        window_block = 0.1 + window(block_size, windowfunc)
-        index = 0
-        for i in range(n_div[0]):
-            for j in range(n_div[1]):
-                image[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:limits[
-                    1][1][j]] += window_block * blocklist[index]
-                image_n[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:
-                        limits[1][1][j]] += window_block
-                index += 1
+    Returns:
+        [ndarray] -- Fused image
+    """
 
-    return image / image_n
+    block_shape = blocklist[0].shape
+    required_blocks = [
+        num_blocks(length, size, sampling) for length, size in zip(shape, block_shape)
+    ]
+    assert len(blocklist) == functools.reduce(
+        operator.mul, required_blocks, 1
+    ), f"Number of blocks {len(blocklist)} does not match the argumetns {required_blocks}"
 
-
-def combine_rgb(blocklist, block_size, shape, sampling=1.0, windowfunc=None):
-    n_div = [int(ceil(sampling * d / b)) for d, b in zip(shape, block_size)]
-
-    limits = [divide(l, bs, n) for l, bs, n in zip(shape, block_size, n_div)]
-
-    image = np.zeros(shape)
-    image_n = np.zeros(shape)
-
-    if windowfunc is None:
-        index = 0
-        for i in range(n_div[0]):
-            for j in range(n_div[1]):
-
-                image[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:limits[
-                    1][1][j], :] += blocklist[index]
-                image_n[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:
-                        limits[1][1][j]] += 1
-                index += 1
-    else:
-        window_block = 0.01 + window(block_size, windowfunc)
-        # print(np.min(window_block), np.max(window_block))
-        window_block = np.transpose([window_block, window_block, window_block],
-                                    (1, 2, 0))
-        index = 0
-        for i in range(n_div[0]):
-            for j in range(n_div[1]):
-
-                image[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:limits[
-                    1][1][j]] += window_block * blocklist[index]
-                image_n[limits[0][0][i]:limits[0][1][i], limits[1][0][j]:
-                        limits[1][1][j]] += window_block
-                index += 1
-
-    # return 255 * image_n
-    return image / image_n
-
-
-def divide(length, block_size, n_blocks, ind_div=1):
-    l_total = block_size * n_blocks
-    overlap = (l_total - length) / (n_blocks - 1) / 2
-
-    l_minus_edges = length - 2 * overlap
-    center_points = [
-        overlap + l_minus_edges * (n + 0.5) / (n_blocks)
-        for n in range(n_blocks)
+    limits = [
+        divide(length, size, num_blocks(length, size, sampling))
+        for length, size in zip(shape, block_shape)
     ]
 
-    lim_a = [(c - block_size / 2) for c in center_points]
-    lim_b = [(c + block_size / 2) for c in center_points]
+    image = np.zeros(shape, dtype="float32")
+    image_n = np.zeros(shape, dtype="float32")
 
-    return [int(round(a / ind_div) * ind_div) for a in
-            lim_a], [int(round(b / ind_div) * ind_div) for b in lim_b]
+    if windowfunc is None:
+        index = 0
+        for lim0 in limits[0]:
+            slice0 = slice(lim0, lim0 + block_shape[0])
+            for lim1 in limits[1]:
+                slice1 = slice(lim1, lim1 + block_shape[1])
 
+                image[slice0, slice1] += blocklist[index]
+                image_n[slice0, slice1] += 1
+                index += 1
+    else:
+        window_block = 0.01 + window(block_shape, windowfunc)
+        index = 0
+        for lim0 in limits[0]:
+            slice0 = slice(lim0, lim0 + block_shape[0])
+            for lim1 in limits[1]:
+                slice1 = slice(lim1, lim1 + block_shape[1])
 
-class BlockDivide():
-    def __init__(self, block_shape, sampling):
-        self.block_shape = block_shape
-        self.sampling = sampling
+                image[slice0, slice1] += window_block * blocklist[index]
+                image_n[slice0, slice1] += window_block
+                index += 1
 
-        self.data_shape = None
-
-    def blocks(self, data):
-        self.data_shape = data.shape
-        return split(data, self.block_shape, self.sampling)
-
-    def fuse(self, blocks):
-        return combine(blocks, self.block_shape, self.data_shape,
-                       self.sampling)
+    return image / image_n

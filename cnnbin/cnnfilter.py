@@ -1,20 +1,27 @@
-'''
+"""
 Noise 2 Noise binning of images
-'''
+"""
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from scipy.signal.windows import hann
 from tqdm import tqdm
 
-from .dataset import N2NPatches, N2NMultiPatches
-from .patches import combine, combine_rgb, split
+from .dataset import N2NMultiPatches, N2NPatches
+from .patches import combine, split
+from .torchsummary import bytes_2_human_readable
 from .unetn2n import UNet
-from .utils import (psnr, split_diagonal, split_diagonal_rgb)
+from .utils import progress_bar, psnr, split_diagonal, split_diagonal_rgb
 
 
-def _model_psnr(image, im1, im2, out_cnn1, out_cnn2):
-    psnr_range = np.max(image) - np.min(image)
+def _model_psnr(im1, im2, out_cnn1, out_cnn2, reference_image=None):
+    if reference_image is not None:
+        psnr_range = np.max(reference_image) - np.min(reference_image)
+    else:
+        maxval = max([np.max(im1), np.max(im2)])
+        minval = max([np.min(im1), np.max(im2)])
+        psnr_range = maxval - minval
+
     psnr_cnn = psnr(out_cnn1, out_cnn2, psnr_range)
     im1, im2 = im1.cpu().detach().numpy(), im2.cpu().detach().numpy()
     psnr_input = psnr(im1, im2, psnr_range)
@@ -22,21 +29,20 @@ def _model_psnr(image, im1, im2, out_cnn1, out_cnn2):
     return psnr_cnn, psnr_input
 
 
-from .torchsummary import bytes_2_human_readable
-
-
-class CNNbin():
-    '''
+class CNNbin:
+    """
     Container of the Noise2Noise UNET for downsampling of images
-    '''
+    """
 
-    def __init__(self,
-                 multichannel=False,
-                 depth=4,
-                 start_filts=48,
-                 block_size=(256, 256),
-                 batch_size=4,
-                 input_skip=True):
+    def __init__(
+        self,
+        multichannel=False,
+        depth=4,
+        start_filts=48,
+        block_size=(256, 256),
+        batch_size=4,
+        input_skip=True,
+    ):
 
         self.multichannel = multichannel
         self.channels = 1
@@ -50,7 +56,8 @@ class CNNbin():
             in_channels=self.channels,
             depth=depth,
             start_filts=start_filts,
-            input_skip=input_skip)
+            input_skip=input_skip,
+        )
 
         self.criterion = torch.nn.MSELoss()
         self.model.cuda()
@@ -63,17 +70,18 @@ class CNNbin():
         self.epoch = 0
 
     def summary(self):
-        '''Print a summary of the CNN model
+        """Print a summary of the CNN model
 
         Returns:
             float -- estimated size in bytes
-        '''
+        """
 
         self.model.cpu()
         size = self.batch_size * self.model.summary(
-            (self.channels, self.block_size[0] // 2, self.block_size[1] // 2))
+            (self.channels, self.block_size[0] // 2, self.block_size[1] // 2)
+        )
         self.model.cuda()
-        print(f'Total approximated size of : {bytes_2_human_readable(size)}')
+        print(f"Total approximated size of : {bytes_2_human_readable(size)}")
 
     def _batch_to_torch(self, batch):
         if self.multichannel:
@@ -83,7 +91,7 @@ class CNNbin():
                 batch = batch.reshape(1, *batch.shape)
             batch = np.transpose(batch.reshape(1, *batch.shape), (1, 0, 2, 3))
 
-        return torch.from_numpy(batch.astype('float32')).cuda()
+        return torch.from_numpy(batch.astype("float32")).cuda()
 
     def _image_to_torch(self, image):
         if self.multichannel:
@@ -91,8 +99,7 @@ class CNNbin():
         else:
             image = image.reshape(1, *image.shape)
 
-        return torch.from_numpy(image.astype('float32')).view(
-            1, *image.shape).cuda()
+        return torch.from_numpy(image.astype("float32")).view(1, *image.shape).cuda()
 
     def _sgd_step(self, torch_im1, torch_im2, alpha=0.95):
         # ===================forward=====================
@@ -114,21 +121,20 @@ class CNNbin():
     def _assert_image(self, image, even=True):
         if even:
             assert all(
-                d % 2 == 0
-                for d in image.shape[:2]), 'Image shape must be divisible by 2'
+                d % 2 == 0 for d in image.shape[:2]
+            ), "Image shape must be divisible by 2"
 
         assert all(
             l >= d for l, d in zip(image.shape, self.block_size)
-        ), 'Image shape {} must be larger than block_size {}'.format(
-            image.shape, self.block_size)
+        ), "Image shape {} must be larger than block_size {}".format(
+            image.shape, self.block_size
+        )
 
         if self.multichannel:
-            assert image.shape[
-                2] == 3, 'Colour images should be in format (H,W,C)'
+            assert image.shape[2] == 3, "Colour images should be in format (H,W,C)"
 
-    def train_image(self, image, num_epochs=10, learning_rate=1e-3,
-                    alpha=0.95):
-        '''Train single image
+    def train_image(self, image, num_epochs=10, learning_rate=1e-3, alpha=0.95):
+        """Train single image
 
         Args:
             image (ndarray): Input image
@@ -136,19 +142,18 @@ class CNNbin():
             learning_rate (float, optional): Defaults to 1e-3. Learning rate of optimizer
             alpha (float, optional): Defaults to 0.95. Regularization of filter to compensate for
             the non-exact loss function(0.5 converges to identity function, 1.0 is full smoothing)
-        '''
+        """
 
         self._assert_image(image)
 
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = learning_rate
+            param_group["lr"] = learning_rate
 
         self.res_loss = []
         self.res_psnr = []
 
         self.model.train()
-        pbar = tqdm(
-            range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
+        pbar = tqdm(range(num_epochs), ncols=60, desc="PSNR {}/{}".format(0, 0))
 
         if self.multichannel:
             im1, im2 = split_diagonal_rgb(image)
@@ -164,22 +169,17 @@ class CNNbin():
             out_cnn1, loss1 = self._sgd_step(im1, im2, alpha)
             out_cnn2, loss2 = self._sgd_step(im2, im1, alpha)
 
-            psnr_cnn, psnr_input = _model_psnr(image, im1, im2, out_cnn1,
-                                               out_cnn2)
+            psnr_cnn, psnr_input = _model_psnr(im1, im2, out_cnn1, out_cnn2, image)
 
-            pbar.set_description('PSNR ({:.3}/{:.3})'.format(
-                psnr_cnn, psnr_input))
+            pbar.set_description("PSNR ({:.3}/{:.3})".format(psnr_cnn, psnr_input))
 
             self.res_loss.append((loss1 + loss2))
             self.res_psnr.append(psnr_cnn)
 
-    def train_random(self,
-                     image,
-                     num_batches=4,
-                     num_epochs=10,
-                     learning_rate=1e-3,
-                     alpha=0.95):
-        '''Train single image on randomly sampled patches
+    def train_random(
+        self, image, num_batches=4, num_epochs=10, learning_rate=1e-3, alpha=0.95
+    ):
+        """Train single image on randomly sampled patches
 
         Args:
             image (ndarray): Input image
@@ -188,19 +188,19 @@ class CNNbin():
             learning_rate (float, optional): Defaults to 1e-3. Learning rate of optimizer
             alpha (float, optional): Defaults to 0.95. Regularization of filter to compensate for
             the non-exact loss function(0.5 converges to identity function, 1.0 is full smoothing)
-        '''
+        """
 
         self._assert_image(image)
 
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = learning_rate
+            param_group["lr"] = learning_rate
 
         self.res_loss = []
         self.res_psnr = []
 
         self.model.train()
-        pbar = tqdm(
-            range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
+
+        pbar = progress_bar(num_epochs, "PSNR {}/{}".format(0, 0))
 
         for _ in pbar:
             self.epoch += 1
@@ -213,10 +213,12 @@ class CNNbin():
                 block_shape=self.block_size,
                 sampling=self.batch_size * num_batches,
                 random=True,
-                random_seed=self.epoch)
+                random_seed=self.epoch,
+            )
 
             data_loader = torch.utils.data.DataLoader(
-                dataset, batch_size=self.batch_size)
+                dataset, batch_size=self.batch_size
+            )
 
             for sample_batched in data_loader:
                 im1, im2 = sample_batched
@@ -224,26 +226,23 @@ class CNNbin():
                 out_cnn1, loss1 = self._sgd_step(im1, im2, alpha)
                 out_cnn2, loss2 = self._sgd_step(im2, im1, alpha)
 
-                psnr_cnn, psnr_input = _model_psnr(image, im1, im2, out_cnn1,
-                                                   out_cnn2)
+                psnr_cnn, psnr_input = _model_psnr(im1, im2, out_cnn1, out_cnn2, image)
                 losses.append(loss1)
                 losses.append(loss2)
                 psnr_res.append(psnr_cnn)
                 psnr_ref.append(psnr_input)
 
-            pbar.set_description('PSNR ({:.3}/{:.3})'.format(
-                np.mean(psnr_res), np.mean(psnr_ref)))
+            pbar.set_description(
+                "PSNR ({:.3}/{:.3})".format(np.mean(psnr_res), np.mean(psnr_ref))
+            )
 
             self.res_loss.append(np.mean(losses))
             self.res_psnr.append(np.mean(psnr_res))
 
-    def train_split(self,
-                    image,
-                    sampling=1.1,
-                    num_epochs=10,
-                    learning_rate=1e-3,
-                    alpha=0.95):
-        '''Train single image on deterministic patches
+    def train_split(
+        self, image, sampling=1.1, num_epochs=10, learning_rate=1e-3, alpha=0.95
+    ):
+        """Train single image on deterministic patches
 
         Args:
             image (ndarray): Input image
@@ -252,26 +251,22 @@ class CNNbin():
             learning_rate (float, optional): Defaults to 1e-3. Learning rate of optimizer
             alpha (float, optional): Defaults to 0.95. Regularization of filter to compensate for
             the non-exact loss function(0.5 converges to identity function, 1.0 is full smoothing)
-        '''
+        """
 
         self._assert_image(image)
 
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = learning_rate
+            param_group["lr"] = learning_rate
 
         self.res_loss = []
         self.res_psnr = []
 
         self.model.train()
 
-        dataset = N2NPatches(
-            image, block_shape=self.block_size, sampling=sampling)
-        data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.batch_size)
+        dataset = N2NPatches(image, block_shape=self.block_size, sampling=sampling)
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size)
 
-        pbar = tqdm(
-            range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
-
+        pbar = progress_bar(num_epochs, "PSNR {}/{}".format(0, 0))
         for _ in pbar:
             self.epoch += 1
             psnr_ref = []
@@ -283,39 +278,35 @@ class CNNbin():
 
                 out_cnn1, loss1 = self._sgd_step(im1, im2, alpha)
                 out_cnn2, loss2 = self._sgd_step(im2, im1, alpha)
-                psnr_cnn, psnr_input = _model_psnr(image, im1, im2, out_cnn1,
-                                                   out_cnn2)
+                psnr_cnn, psnr_input = _model_psnr(im1, im2, out_cnn1, out_cnn2, image)
                 losses.append(loss1)
                 losses.append(loss2)
                 psnr_res.append(psnr_cnn)
                 psnr_ref.append(psnr_input)
 
-            pbar.set_description('PSNR ({:.3}/{:.3})'.format(
-                np.mean(psnr_res), np.mean(psnr_ref)))
+            pbar.set_description(
+                "PSNR ({:.3}/{:.3})".format(np.mean(psnr_res), np.mean(psnr_ref))
+            )
 
             self.res_loss.append(np.mean(losses))
             self.res_psnr.append(np.mean(psnr_res))
 
-    def train_list(self,
-                   images,
-                   batch_size=16,
-                   num_batches=4,
-                   num_epochs=10,
-                   lr=1e-3,
-                   alpha=0.95):
+    def train_list(
+        self, images, batch_size=16, num_batches=4, num_epochs=10, lr=1e-3, alpha=0.95
+    ):
+        """ train using a list of images """
 
         for image in images:
             self._assert_image(image, even=False)
 
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = lr
+            param_group["lr"] = lr
 
         self.res_loss = []
         self.res_psnr = []
 
         self.model.train()
-        pbar = tqdm(
-            range(num_epochs), ncols=60, desc='PSNR {}/{}'.format(0, 0))
+        pbar = progress_bar(num_epochs, desc="PSNR ({:.3}/{:.3})".format(0.0, 0.0))
 
         for _ in pbar:
             self.epoch += 1
@@ -329,31 +320,32 @@ class CNNbin():
                 images,
                 block_shape=self.block_size,
                 sampling=max(1, num_pacthes // len(images)),
-                random_seed=self.epoch)
+                random_seed=self.epoch,
+            )
 
-            data_loader = torch.utils.data.DataLoader(
-                dataset, batch_size=batch_size)
+            data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
 
-            for i_batch, sample_batched in enumerate(data_loader):
+            for _, sample_batched in enumerate(data_loader):
                 im1, im2 = sample_batched
 
                 out_cnn1, loss1 = self._sgd_step(im1, im2, alpha)
                 out_cnn2, loss2 = self._sgd_step(im2, im1, alpha)
 
-                psnr_cnn, psnr_input = _model_psnr(image, im1, im2, out_cnn1,
-                                                   out_cnn2)
+                psnr_cnn, psnr_input = _model_psnr(im1, im2, out_cnn1, out_cnn2)
                 losses.append(loss1)
                 losses.append(loss2)
                 psnr_res.append(psnr_cnn)
                 psnr_ref.append(psnr_input)
 
-            pbar.set_description('PSNR ({:.3}/{:.3})'.format(
-                np.mean(psnr_res), np.mean(psnr_ref)))
+            pbar.set_description(
+                "PSNR ({:.3}/{:.3})".format(np.mean(psnr_res), np.mean(psnr_ref))
+            )
 
             self.res_loss.append(np.mean(losses))
             self.res_psnr.append(np.mean(psnr_res))
 
     def filter_patch(self, image):
+        """ filter image patch using the network"""
         self._assert_image(image, even=True)
         self.model.eval()
 
@@ -378,6 +370,7 @@ class CNNbin():
         return retval
 
     def filter(self, image, sampling=1.1):
+        """ filter image using the network by splitting it up into smaller pathces """
         self._assert_image(image, even=True)
 
         bin_block_size = [d // 2 for d in self.block_size]
@@ -397,35 +390,25 @@ class CNNbin():
         for index in pbar:
             patches_filt[index] = self.filter_patch(patches[index])
 
-        if self.multichannel:
-            return combine_rgb(
-                patches_filt,
-                bin_block_size,
-                bin_shape,
-                sampling=sampling,
-                windowfunc=hann)
-        else:
-            return combine(
-                patches_filt,
-                bin_block_size,
-                bin_shape,
-                sampling=sampling,
-                windowfunc=hann)
+        return combine(patches_filt, bin_shape, sampling=sampling, windowfunc=hann)
 
     def load(self, filename):
+        """ load model weights """
         self.model.load_state_dict(torch.load(filename))
-        print('Net loaded')
+        print("Net loaded")
 
     def save(self, filename):
+        """ save model weights """
         torch.save(self.model.state_dict(), filename)
-        print(f'Weights {filename} saved!')
+        print(f"Weights {filename} saved!")
 
     def plot_train(self):
+        """ plot training progress """
         plt.figure(figsize=(8, 3))
         plt.subplot(121)
         plt.plot(self.res_loss)
-        plt.ylabel('L2 Loss')
+        plt.ylabel("L2 Loss")
         plt.subplot(122)
         plt.plot(self.res_psnr)
-        plt.ylabel('PSNR')
+        plt.ylabel("PSNR")
         plt.show()
