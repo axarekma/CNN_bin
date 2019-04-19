@@ -11,7 +11,7 @@ from .dataset import N2NMultiPatches, N2NPatches
 from .patches import combine, split
 from .torchsummary import bytes_2_human_readable
 from .unetn2n import UNet
-from .utils import progress_bar, psnr, split_diagonal, split_diagonal_rgb
+from .utils import progress_bar, rangebar, psnr, split_diagonal, split_diagonal_rgb
 
 
 def _model_psnr(im1, im2, out_cnn1, out_cnn2, reference_image=None):
@@ -293,7 +293,7 @@ class CNNbin:
             self.res_psnr.append(np.mean(psnr_res))
 
     def train_list(
-        self, images, batch_size=16, num_batches=4, num_epochs=10, lr=1e-3, alpha=0.95
+        self, images, samples=1, num_epochs=10, lr=1e-3, alpha=0.95
     ):
         """ train using a list of images """
 
@@ -315,16 +315,15 @@ class CNNbin:
             psnr_res = []
             losses = []
 
-            num_pacthes = batch_size * num_batches
 
             dataset = N2NMultiPatches(
                 images,
                 block_shape=self.block_size,
-                sampling=max(1, num_pacthes // len(images)),
+                sampling=samples,
                 random_seed=self.epoch,
             )
 
-            data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+            data_loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size)
 
             for _, sample_batched in enumerate(data_loader):
                 im1, im2 = sample_batched
@@ -387,8 +386,7 @@ class CNNbin:
         else:
             patches_filt = np.zeros((patches.shape[0], *bin_block_size))
 
-        pbar = tqdm(range(len(patches)), ncols=60)
-        for index in pbar:
+        for index in rangebar(len(patches)):
             patches_filt[index] = self.filter_patch(patches[index])
 
         return combine(patches_filt, bin_shape, sampling=sampling, windowfunc=hann)

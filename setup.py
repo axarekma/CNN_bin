@@ -1,11 +1,11 @@
 import setuptools
 
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="cnnbin",
-    version="0.0.1",
+    version="0.0.2",
     author="Axel Ekman",
     author_email="axel.ekman@iki.fi",
     description="image binning with CNN filtering",

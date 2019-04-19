@@ -103,6 +103,8 @@ class N2NMultiPatches(Dataset):
 
         if self.multichannel:
             self.stack1, self.stack2 = split_stack_rgb(self.patches)
+        else:
+            self.stack1, self.stack2 = split_stack(self.patches)
 
     def image_to_torch(self, image):
         """ convert numpy image to PyTorch tensor """
